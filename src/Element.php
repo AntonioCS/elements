@@ -45,9 +45,8 @@ class Element {
      *
      * @var array
      */
-    protected static $_config = array(
-        'view' => null,
-        'templatesPath' => null
+    public static $_config = array(
+        'view' => null        
     );
     
     /**
@@ -56,15 +55,33 @@ class Element {
      */
     protected $_view = null;
 
-	/**
-	 *
-	 * Element Contruct
-	 *	 
-	 */
-    public function __construct($view = null) {
+    
+    /**
+     *
+     * @var array
+     */
+    protected $_data = array();        
+    
+    /**
+     * 
+     * @param string $template
+     * @param objec $view
+     */
+    public function __construct($template = null,$view = null) {
+        if ($template) {
+            $this->setTemplate($template);
+        }           
+        
         if ($view) {
             $this->setView($view);
         }		
+        else {
+            if (self::$_config['view']) {
+                $this->setView(clone self::$_config['view']);
+            }            
+        }
+        
+        $this->markElement();        
 	}
     
     /**
@@ -102,7 +119,7 @@ class Element {
      * @return mixed
      */
     public function getView() {        
-        return $this->_view ?: self::$_config['view'];
+        return $this->_view;
     }
     
     /**
@@ -180,6 +197,21 @@ class Element {
         $this->_attributes[$attributename] = $value;
         return $this;
     }
+    
+    /**
+     * Remove element attribute
+     * 
+     * @param string $attributename
+     * @return boolean|null
+     */
+    public function removeAttribute($attributename) {
+        if (isset($this->_attributes[$attributename])) {
+            unset($this->_attributes[$attributename]);
+            return true;
+        }
+        
+        return null;
+    }
 
     /**
     * Retrieve the attribute
@@ -233,14 +265,13 @@ class Element {
         return $this->_attributes;
     }
 
-    /**
-    * Set or reset an attribute
+    /**    
     *
     * @param string $varname
     * @param string $value
     */
     public function __set($varname,$value) {
-        $this->setAttribute($varname, $value);
+        $this->setData($varname, $value);
     }
     /**
      * The __get method might be overwritten. It's better if the code to get the attribute is in another method so that it can be called directly
@@ -249,9 +280,33 @@ class Element {
      */
 
     public function __get($varname) {
-    	return $this->getAttribute($varname);
+    	return $this->getData($varname);
     }
 
+    /**
+     * 
+     * @param string $dataName
+     * @param mixed $dataValue
+     * @return \Elements\Element
+     */
+    public function setData($dataName,$dataValue) {
+        $this->_data[$dataName] = $dataValue;
+        return $this;
+    }
+    
+    /**
+     * 
+     * @param string $dataName
+     * @return mixed
+     */
+    public function getData($dataName) {
+        if (isset($this->_data[$dataName])) {
+            return $this->_data[$dataName];
+        }
+        
+        return null;
+    }
+    
     /**
      * Return element html
      *
@@ -262,20 +317,17 @@ class Element {
         
         if ($renderCode) {
             return $renderCode;
-        }
-                
-        if (!$this->_tplPath)
-            throw new NoElementTemplate(__CLASS__);
+        }                      
         
         $view = $this->getView();
         
         if (!$view) {
-            throw new NoViewObject(__CLASS__);        
+            throw new NoViewObject(get_class($this));        
         }
         
         $view->load($this->_template);
         
-        $data = $this->beforeRender();
+        $data = array_merge($this->beforeRender(), $this->_data);
         
         if ($this->hasAttributes()) {
             $view->set('attributes', $this->getAttributes());
@@ -284,26 +336,25 @@ class Element {
         if (!empty($data)) {
             $view->set($data);
         }
-/*
-        $tpl = new acs_view($this->tpl_path,false);
-
-        //$data = $this->beforeHtml(); //must be here to allow the before_html to alter the attributes
-        $data = $this->beforeHtml(); //Must change call in other classes before I can change here
-
-        if ($this->hasAttributes())
-            $tpl->attributes = $this->getAttributes();
-
-        return $tpl->addData($data)->returnRender();
- * 
- */
+        
+        $render = $this->afterRender($view->render());
+        
+        return $render;        
     }
+    
+    /**
+     * 
+     * @return string
+     */
+    public function __toString() {
+        return $this->render();
+    }    
 
     /**
     * To be overloaded in the child class
     * This will be called by the method render()
     * This will be the data set in the view data 
-    * 
-    *
+    *   
     * @return array()
     * 	Return an associative array
     *
@@ -313,19 +364,29 @@ class Element {
     }
     
     /**
-     * Due extra processing on the rendered element template code
+     * Do extra processing on the rendered element template code
      * 
      * @param string $render
      * @return string
      */
     protected function afterRender($render) {
         return $render;        
+    }  
+    
+    /**
+     * Set a custom attribute with an object reference
+     * 
+     */
+    protected function markElement() {
+        $this->setAttribute('data-element-ref', spl_object_hash($this));
     }
-
-
-
-    public function __toString() {
-        return $this->html();
+    
+    /**
+     * 
+     * @return string
+     */
+    public function getElementMark() {
+        return $this->getAttribute('data-element-ref');
     }
 }
 
