@@ -5,9 +5,8 @@ namespace Elements;
 /**
 * For elements which are containers (div, spam, fieldset, etc)
 */
-class ElementContainer extends element {
-
-
+class ElementContainer extends Element {
+        
     /**
     * This will hold the elements
     *
@@ -30,81 +29,49 @@ class ElementContainer extends element {
      */
     protected $_elements_ref_obj = array();
 
-
-    /*
-     inject(&$array,$position,$value) {
-
-        if ($position == 0)
-            $array = array_merge(array($value),$array);
-        elseif (!isset($array[$position]))
-            $array[$position] = $value;
-        else {
-            $part1 = array_slice($array,0,$position);
-            $part2 = array_merge(array($value),array_slice($array,$position));
-
-            $array = array_merge($part1,$part2);
-        }
-    }
-     */
-    /**
-     * 
-     * @param \Elements\Element $element
-     */
-    protected function getElementRef(\Elements\Element $element) {
-        return spl_object_hash($element);        
-    }
-
-
     /**
     * To add html directly
     *
     * @param string $element
     *
-    * @deprecated Just use the add() method
     */
     public function addHtml($html) {
         $e = new Element;
         $e->setRenderCode((string)$html);
         
         $this->add($e);
-    }      
+    }     
   
-    /**
-    * Add element to the container
-    *
-    * @param mixed $element Can either be pure html, element or element_container
-    */
-    public function add(\Elements\Element $element, $positonToAdd = null) {
-
-
-        $ref = null;
-        if (is_object($element)) { //assume element descendent
-            if (in_array($element,$this->_elements)) {
-                return;
+   /**
+     * Add element to the container    
+     * 
+     * @param \Elements\Element $element
+     * @param int|null $positon
+     * @return \Elements\Element
+     */
+    public function add(\Elements\Element $element, $position = null) {
+        if (in_array($element,$this->_elements)) {                                    
+            return;
+        }
+               
+        if ($position !== null && is_numeric($position)) {
+            if ($position == 0) {                
+                array_unshift($this->_elements, $element);
             }
-                  
-            //check to see if has an id or name and use it for reference in the elements
-            $ref = $element->getAttribute('id') ?: $element->getAttribute('name'); //PHP 5.3
+            elseif (!isset($this->_elements[$position])) {
+                $this->_elements[$position] = $element;
+            }
+            else {
+                $part1 = array_slice($this->_elements,0,$position);
+                $part2 = array_merge(array($element),array_slice($this->_elements,$position));
 
-            $element->setParent($this);
+                $this->_elements = array_merge($part1,$part2);
+            }
         }
-
-        //DONE: Create an array for the references, so that the _elements array will be a numeric array and not an associative
-        if ($positonToAdd !== null) {
-            helper_array::inject($this->_elements,$positonToAdd,$element);
-        }
-        else {
+        else {            
             $this->_elements[] = $element;
         }
         
-        if ($ref) {
-            if ($positonToAdd !== null)
-                $this->_elements_ref[$ref] = $positonToAdd;
-            else
-                $this->_elements_ref[$ref] = array_pop(array_keys($this->_elements));
-        }
-
-        //Since this is an object and it's done by reference I can just return the reference to the object or code in case of it no being an object
         return $element;
     }
 
@@ -124,15 +91,16 @@ class ElementContainer extends element {
     /**
     * Add element before 'element'
     *
-    * @param string $element_ref
-    * @param mixed $element
+    * @param \Elements\Element $element
+    * @param string $ref   
     *
     * @return mixed
     */
-    public function addBefore($element_ref, $element) {
-        if (isset($this->_elements_ref[$element_ref])) {
-            //Since I am using the helper_array::inject I don't have to decrease the value of _elements_ref. The inject method will push the other element down
-            return $this->add($element,$this->_elements_ref[$element_ref]);
+    public function addBefore(\Elements\Element $element, $ref) {
+        $pos = $this->find($ref);
+        
+        if ($pos !== null) {                      
+            return $this->add($element,$pos);
         }
 
         return null;
@@ -141,14 +109,15 @@ class ElementContainer extends element {
     /**
     * Add after element
     *
-    * @param mixed $element_ref
-    * @param mixed $element
+    * @param \Elements\Element $element
+    * @param string $ref
+    * 
     * @return mixed
     */
-    public function addAfter($element_ref, $element) {
-        if (isset($this->_elements_ref[$element_ref])) {
-            $pos = $this->_elements_ref[$element_ref] +1;
-            return $this->add($element,$pos);
+    public function addAfter(\Elements\Element $element, $ref) {
+        $pos = $this->find($ref);
+        if ($pos !== null) {                    
+            return $this->add($element,++$pos);
         }
 
         return null;
@@ -163,23 +132,6 @@ class ElementContainer extends element {
     public function addTop($element) {
         return $this->add($element,0);
     }
-
-    public function __get($name) {
-        return $this->getElement($name) ?: parent::__get($name); //PHP 5.3
-    }
-
-    /**
-    * Return reference of element
-    *
-    * @param string $ref
-    */
-    public function getElement($ref) {
-        if (isset($this->_elements_ref[$ref])) {
-            return $this->_elements[$this->_elements_ref[$ref]];
-        }
-        return null;
-    }
-
 	
     /**
     * Process the elements
@@ -188,17 +140,77 @@ class ElementContainer extends element {
     * @return array
     */
     public function beforeRender($data = array()) {
-        return array_merge(
-            array(
-                'elements' => implode(
-								"\n",
-								($this->_process_type == 0 ?
-									$this->processElementsNoWrap() :
-									$this->processElementsWrap($container_name)
-								)
-							)
-            ),
-            $data
-        );
+        $html = array();
+        
+        foreach ($this->_elements as $element) {
+            $html[] = $element->render();
+        }                  
+        
+        return array('elements' => implode("\n",$html));    
+    }  
+    
+    /**
+     * jQuery type element search
+     * 
+     * Start with # for id search or . for class search
+     * 
+     * @param string $elementRef
+     * @return int|null Return int for a valid position or null for invalid
+     */
+    public function find($elementRef) {
+        $sel = $elementRef[0];
+        $ref = substr($elementRef, 1);
+              
+        $position = null;
+        
+        switch ($sel) {
+            case '#':
+                $position = $this->findById($ref);
+            break;
+            case '.':
+                $position = $this->findByClass($ref);
+            break;
+        }
+        
+        return $position;
+    }
+    
+    public function findById($id) {        
+        return $this->findByAttribute('id', $id);
+    }
+    
+    public function findByClass($class) {
+        return $this->findByAttribute('class', $class);
+    }
+    
+    /**
+     * 
+     * @param string $attributeName
+     * @param string $attributeValue
+     * @return null|int
+     */
+    public function findByAttribute($attributeName, $attributeValue) {
+        $containers = array();
+        
+        foreach ($this->_elements as $pos => $element) {            
+            if ($attributeValue == $element->getAttribute($attributeName)) {
+                return $pos;
+            }
+            elseif ($element instanceof self) {
+                $containers[] = $element;
+            }
+        }     
+        
+        if (!empty($containers)) {
+            foreach ($containers as $container) {
+                $pos = $container->findByAttribute($attributeName,$attributeValue);
+                
+                if ($pos !== null) {
+                    return $pos;
+                }
+            }
+        }
+        
+        return null;
     }
 }

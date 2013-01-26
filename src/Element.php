@@ -51,6 +51,13 @@ class Element {
     
     /**
      *
+     * @var int
+     */
+    protected static $_count = 0;
+
+
+    /**
+     *
      * @var object
      */
     protected $_view = null;
@@ -60,7 +67,7 @@ class Element {
      *
      * @var array
      */
-    protected $_data = array();        
+    protected $_data = array();      
     
     /**
      * 
@@ -81,10 +88,12 @@ class Element {
             }            
         }
         
-        $this->markElement();        
+        self::$_count++;        
+        $this->setAttribute('id', 'element_' . self::$_count);
 	}
     
     /**
+     * With this set. The render code method will just return this
      * 
      * @param string $code
      * @return \Elements\Element
